@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import copy
 
+
 #relevance based cam - based on https://openaccess.thecvf.com/content/CVPR2021/papers/Lee_Relevance-CAM_Your_Model_Already_Knows_Where_To_Look_CVPR_2021_paper.pdf
 #official implementation - https://github.com/mongeoroo/Relevance-CAM
 class Relevance_CAM:
