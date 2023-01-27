@@ -10,5 +10,8 @@ This repository contains the  implementation of Relevance Based Class Activation
 
 
 #### Usage
->> To be added
+
+Please refer the workbook for detailed usage example.
+- Currently only works with Resnet50 out of the box.
+
 

@@ -14,9 +14,9 @@ import copy
 #relevance based cam - based on https://openaccess.thecvf.com/content/CVPR2021/papers/Lee_Relevance-CAM_Your_Model_Already_Knows_Where_To_Look_CVPR_2021_paper.pdf
 #official implementation - https://github.com/mongeoroo/Relevance-CAM
 class Relevance_CAM:
-    def __init__(self,model,class_dict,device="cuda"):
+    def __init__(self,model,class_dict,device="cpu"):
         """
-        model:  dojo model
+        model: torch model 
         """
         self.imgclasses = class_dict
         self.device = device
@@ -34,8 +34,20 @@ class Relevance_CAM:
         
         """
         output_layers = []
-        for layer in layers:
-            if isinstance(layer,nn.Linear):
+        for l in layers:
+            if isinstance(l,nn.Sequential):
+                for i,layer in enumerate(l):
+                    if isinstance(layer,nn.Linear):
+                        m,n = layer.weight.shape[1],layer.weight.shape[0]
+                        print(m,n)
+                        substitute_layer = nn.Conv2d(m,n,1)
+                        substitute_layer.weight = nn.Parameter(layer.weight.reshape(n,m,1,1))
+                        substitute_layer.bias = nn.Parameter(layer.bias)
+                        output_layers += [substitute_layer]
+                    else:
+                        output_layers += [layer]
+            elif isinstance(l,nn.Linear):
+                layer = l
                 m,n = layer.weight.shape[1],layer.weight.shape[0]
                 substitute_layer = nn.Conv2d(m,n,1)
                 substitute_layer.weight = nn.Parameter(layer.weight.reshape(n,m,1,1))
@@ -43,6 +55,7 @@ class Relevance_CAM:
                 output_layers += [substitute_layer]
             else:
                 output_layers += [layer]
+                
         return output_layers
 
     def get_activations(self,input:torch.Tensor,layers:list):
@@ -92,7 +105,7 @@ class Relevance_CAM:
         """
         Target_vector = act[-1].detach()
         z_val = Target_vector[0,target_index]
-        Target_vector = -Target_vector/1
+        Target_vector = -Target_vector/(len(self.imgclasses)-1)
         Target_vector[0,target_index] = z_val
         relevances_last_layer = [(Target_vector).data]
         
@@ -139,15 +152,19 @@ class Relevance_CAM:
         
         for i in np.arange(number_of_layers-1,0,-1):
             #setting req_grad = True
+            
             act[i] = (act[i].data).requires_grad_(True)
             
             if isinstance(layers[i],torch.nn.MaxPool2d): layers[i] = torch.nn.AvgPool2d(2,2)
+            if isinstance(layers[i],torch.nn.ReLU): layers[i] = torch.nn.ReLU(inplace=False)
+                
             #skipping dropout and Relu - from relevance propagation
             if (not isinstance(layers[i],torch.nn.Dropout)) or  (not isinstance(layers[i],torch.nn.ReLU)):
                 
-                clone_layer = self.clone_layer(layers[i])
+                cloned_layer = self.clone_layer(layers[i])
                 #Passing the activation from n-1 layer to nth layer via  forward pass (here len of activations is = len of layers + 1)
-                forward_pass = clone_layer.forward(act[i].to(self.device)) + self.eps
+                act[i].to(self.device)
+                forward_pass = cloned_layer.forward(act[i]) + self.eps
                 (forward_pass * (relevances_per_layer[i+1].to(self.device)/forward_pass).data).sum().backward()
                 relevances_per_layer[i] = (act[i]*act[i].grad).data   
                 
@@ -191,13 +208,18 @@ class Relevance_CAM:
         """
         
         layers = []
+#         layers = list(self.model._modules['features']) + self.convert_to_conv(list(self.model._modules['classifier']))
+
         for key in self.model._modules.keys():
-            
-            if key == "classifier":
+            if (key == "classifier" or key == "fc") :
                 layers+=[nn.AdaptiveAvgPool2d((1,1))]
-                layers+=self.convert_to_conv(list(self.model._modules[key]))
+                layers+=self.convert_to_conv([self.model._modules[key]])
             else:
-                layers+= list((self.model._modules[key]))
+                if "avgpool" not in key:
+                    layers+=[(self.model._modules[key])]
+        
+                    
+        
                 
         activations = self.get_activations(img,layers)
         #predict class
