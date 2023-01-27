@@ -11,7 +11,7 @@ This repository contains the  implementation of Relevance Based Class Activation
 
 #### Usage
 
-Please refer the workbook for detailed usage example.
+Please refer the [**workbook.ipynb**](https://github.com/j-sripad/relevance_based_cam/blob/main/Workbook.ipynb) for detailed usage example.
 - Currently only works with Resnet50 out of the box.
 
 
